@@ -5,31 +5,27 @@
 
 Ticker ticker_led,ticker_Press;
 Timer timer;
-//InterruptIn button;
 InterruptIn button(PA_0);
 
 enum States {DOWN, UP, FALL, RISE, MIN, MAX};      //Estados da máquina
-enum Events {ONE_PRESS,PRESS_TO_FALL, PRESS_TO_RISE, BT_RELEASE,BT_PRESSED, BT_LED_BLINKS, MAX_LUMINOSITY, MIN_LUMINOSITY}; 
-PwmOut Leds[]={LED1,LED2,(PB_1)}; 
-//PwmOut Leds[]={LED1,LED2,(PA_9)};
-//int INTENSITY=0;
+enum Events {ONE_PRESS,PRESS_TO_FALL, PRESS_TO_RISE, BT_RELEASE,BT_PRESSED, MAX_LUMINOSITY, MIN_LUMINOSITY};
 
-void StateMachine(int event);   //Função da máquina de estados
-Events eventSelect(void);          //Função que verifica qual evento foi gerado
-void stateSelect(int state);    //Função que seleciona o próximo estado da máquina de estados
 
-/*
-DigitalOut myGREENled(PD_12);
+PwmOut pwm_port(PA_9);
 DigitalOut myYELLOWled(PD_13);
-DigitalOut myREDled(PD_14);
 DigitalOut myBLUEled(PD_15);
-*/
+DigitalOut myREDled(PD_14);    //Was used during the debug
+DigitalOut myGREENled(PD_12);  //Was used during the debug
 
-//*************************** Variáveis globais ********************************
+void StateMachine(int event);   //Machine State Function
+Events eventSelect(void);          //Check which event was choosen
+void stateSelect(int state);    //Execute the current state (action)
 
-States nextState = DOWN;        //Próximo estado da máquina de estado
+
+//*************************** Global Variable ********************************
+
+States nextState = DOWN;        
 States currentState = DOWN;
-States previousState;
 Events event;
 float timePressed=0;
 bool button_pressed=false;
@@ -38,7 +34,7 @@ bool occurred_event=false;
 bool direction=0;
 
 
-//*************************** Protótipo de funções ********************************
+//*************************** Functions *************************************
 
 void Leds_OFF();
 void timer_begin();
@@ -49,19 +45,19 @@ void check_bt();
 
 
 
-int main() {
-       
+int main()
+{
     button.rise(&timer_begin);
     button.fall(&timer_end);
 
-    while(1){
-        if (occurred_event){
+    while(1) {
+        if (occurred_event) {
             event = eventSelect();
             StateMachine(event);
             stateSelect(nextState);
-            occurred_event=false;   
-        } 
-    }   
+            occurred_event=false;
+        }
+    }
 }
 
 
@@ -70,14 +66,15 @@ int main() {
 //**************************************************************************
 //---------------------------- STATE MACHINE -------------------------------
 
-void StateMachine(int event){       //Função chamada para alterar o próximo estado da máquina
+void StateMachine(int event)        //Change the next Machine State
+{
 
-    switch (currentState){
+    switch (currentState) {
         case UP:
-            switch(event){
+            switch(event) {
                 case ONE_PRESS:
                     nextState = DOWN;
-                break;       
+                break;
                 case PRESS_TO_RISE:
                     nextState = RISE;
                 break;
@@ -85,51 +82,53 @@ void StateMachine(int event){       //Função chamada para alterar o próximo e
         break;
 
         case DOWN:
-            switch(event){                
+            switch(event) {
                 case ONE_PRESS:
                     nextState = UP;
-                break;                       
+                break;
                 case PRESS_TO_FALL:
                     nextState = FALL;
                 break;
             }
         break;
-        
+
         case FALL:
-            switch(event){
-                case BT_PRESSED:
-                    nextState =FALL;
-                break;                       
-                case BT_RELEASE:                
-                    nextState = DOWN;                    
+            switch(event) {
+                case BT_RELEASE:
+                    nextState = DOWN;
                 break;
                 case MIN_LUMINOSITY:
-                    nextState=MIN;
+                    nextState = MIN;
                 break;
             }
         break;
 
         case RISE:
-            switch(event){
-                case BT_PRESSED:
-                    nextState = RISE;
-                break;                       
-                case BT_RELEASE:                
-                    nextState = UP;                    
+            switch(event) {
+                case BT_RELEASE:
+                    nextState = UP;
                 break;
                 case MAX_LUMINOSITY:
-                    nextState=MAX;
+                    nextState = MAX;
                 break;
             }
         break;
 
         case MIN:
-            nextState = UP;
+            switch(event) {
+                case BT_RELEASE:
+                    nextState = UP;
+                break;
+            }
         break;
-        
-        
+
+
         case MAX:
-            nextState = DOWN;
+            switch(event) {
+                case BT_RELEASE:
+                    nextState = DOWN;
+                break;
+            }
         break;
 
     }
@@ -137,135 +136,134 @@ void StateMachine(int event){       //Função chamada para alterar o próximo e
 }
 
 
-Events eventSelect(void){      //Função que detecta qual evento foi gerado
-    //if(time_pressed == -1.0f)
-      // return BT_PRESSED;
-       
-    if ((B_Led_blinking==1) || (Y_Led_blinking==1))
-       return BT_PRESSED;
-       
-    //if ((B_Led_blinking==0) || (Y_Led_blinking==0))
-        //return BT_RELEASE;
+Events eventSelect(void)  //Detects which state was generated by the button/flags/state.
+{
 
-    if (timePressed < 1)
+//1
+    if ((B_Led_blinking==1) || (Y_Led_blinking==1))
+        return BT_PRESSED;
+//2
+    if ((currentState==RISE) && (pwm_port==1))
+        return MAX_LUMINOSITY;
+//3
+    if ((currentState==FALL)  && (pwm_port==0))
+        return MIN_LUMINOSITY;
+//4
+    if (((currentState==RISE) || (currentState==FALL))  && (B_Led_blinking==0) && (Y_Led_blinking==0))
+        return BT_RELEASE;
+
+//5
+    if ((currentState==MAX) || (currentState==MIN))
+        return BT_RELEASE;
+//6
+    if ((timePressed < 1) && ((currentState==UP) || (currentState==DOWN)) )
         return ONE_PRESS;
-        
+//7
     if ((timePressed>1) && (currentState==UP))
         return PRESS_TO_RISE;
-
+//8
     if ((timePressed>1) && (currentState==DOWN))
-          return PRESS_TO_FALL;
-      
+        return PRESS_TO_FALL;
+
 }
-        
 
 
 
-void stateSelect(int state){        //Função chamada para configurar as ações de cada estado
 
-        switch (state){
-            case UP:
-                ticker_Press.detach();
-                Leds_OFF();            //Apaga leds
-                Leds[0]=1;              //Acende led AZUL
-                button.enable_irq();
-                occurred_event=false;
-                break;
-                
-            case DOWN:
-                Leds_OFF();
-                Leds[1]=1;              //Acende led AMARELO 
-                button.enable_irq();
-                occurred_event=false;               
-                break;
+void stateSelect(int state)         //Config current state.
+{
 
-              case FALL:
-                direction=0;
-                button.disable_irq();
-                ticker_led.attach(&blink_YELLOW,0.2);
-                ticker_Press.attach(&check_bt,0.1);
-                break;
+    switch (state) {
+        case UP:
+            ticker_Press.detach();
+            Leds_OFF();            //Apaga leds
+            myBLUEled=1;              //Acende led AZUL
+            button.enable_irq();
+            occurred_event=false;
+            break;
 
-            case RISE:
-                direction=1;
-                button.disable_irq();
-                ticker_led.attach(&blink_BLUE,0.2);
-                ticker_Press.attach(&check_bt,0.1);                 
-                break;
+        case DOWN:
+            Leds_OFF();
+            myYELLOWled=1;              //Acende led AMARELO
+            button.enable_irq();
+            occurred_event=false;
+            break;
 
-            case MIN:
-                Leds_OFF();                
-                break;    
+        case FALL:
+            button_pressed=true;
+            direction=0;
+            button.disable_irq();
+            ticker_led.attach(&blink_YELLOW,0.2);
+            ticker_Press.attach(&check_bt,0.1);
+            break;
 
-            case MAX:
-                Leds_OFF();
-                break;
-                
-        }
+        case RISE:
+            button_pressed=true;
+            direction=1;
+            button.disable_irq();
+            ticker_led.attach(&blink_BLUE,0.2);
+            ticker_Press.attach(&check_bt,0.1);
+            break;
+
+        case MIN:
+            Leds_OFF();
+            break;
+
+        case MAX:
+            Leds_OFF();
+            break;
+
+    }
 
     currentState = nextState;
 }
 
 
-void check_bt (){
-    occurred_event=true;    
-    button_pressed=true;
+void check_bt ()  //Button loop to increase/decrease luminosity
+{
+
     timePressed=0;
-        switch (button.read()){
+    if(button.read()==1) {
 
-              case 1:
-                 if (direction==1){
-                      Leds[2]=Leds[2]+0.05;
-                      button_pressed=false;
-                 }else{
-                      Leds[2]=Leds[2]-0.05;
-                      button_pressed=false;
-                 }
-                  
+        if (direction==1) {
+            pwm_port=pwm_port+0.05;
+            button_pressed=false;
+            myREDled=1;
+            myGREENled=1;
+            if (pwm_port==1) {
+                B_Led_blinking=0;
+                ticker_led.detach();
+                occurred_event=true;
+                button.enable_irq();
+                ticker_Press.detach();
+            }
+        } else {
 
-              break;
-
-              case 0:
-
-                   switch (button_pressed){
-                       case true:
-                          
-                       break;
-                   
-                       case false:
-                          if ((direction==1) && (Leds[2]<1)){
-                                currentState=DOWN; //tem que ser invertido para DOWN chamar UP
-                          }else{
-                                if ((direction==1) && (Leds[2]==1)){
-                                    currentState=MAX;   //tem que ser invertido para UP chamar DOWN                        
-                                }else{
-                                  if ((direction==0) && (Leds[2]>0)){
-                                      currentState=UP;   //tem que ser invertido para UP chamar DOWN 
-                                  }else{
-                                     if((direction==0) && (Leds[2]==0)){
-                                        currentState=MIN;   //tem que ser invertido para UP chamar DOWN 
-                                     }
-                                  }
-                                }
-                             
-
-                          }
-                             
-                         
-                          if (direction==1)
-
-                          if (direction==1)
-
-                          B_Led_blinking=0;
-                          Y_Led_blinking=0;
-                          ticker_Press.detach();
-                          ticker_led.detach(); 
-
-                       break;
-                   }
-
-              break;
+            pwm_port=pwm_port-0.05;
+            button_pressed=false;
+            myREDled=1;
+            myGREENled=1;
+            if (pwm_port==0) {
+                Y_Led_blinking=0;
+                ticker_led.detach();
+                occurred_event=true;
+                button.enable_irq();
+                ticker_Press.detach();
+            }
         }
+
+    } else {
+        if(button_pressed==false) {
+            B_Led_blinking=0;
+            Y_Led_blinking=0;
+            ticker_Press.detach();
+            ticker_led.detach();
+            button.enable_irq();
+            occurred_event=true;
+        }
+
+
+    }
 }
 
 //**************************************************************************
@@ -274,18 +272,18 @@ void check_bt (){
 void blink_YELLOW()
 {
     Y_Led_blinking=1;
-    Leds[0]=!Leds[0];
-    //LED1=!LED1;
-    
+    myYELLOWled=!myYELLOWled;
+
+
 }
 
 //---------------------------- BLINK BLUE LED -------------------------------
 void blink_BLUE()
 {
-       B_Led_blinking=1;
-       Leds[1]=!Leds[1];   // Each Blink correspond to 1 sec.
-       //LED2=!LED2;
-       
+    B_Led_blinking=1;
+    myBLUEled=!myBLUEled;   // Each Blink correspond to 1 sec.
+
+
 }
 
 
@@ -293,10 +291,11 @@ void blink_BLUE()
 //**************************************************************************
 //---------------------------- PRESS BUTTON ------------------------------
 
-void timer_begin() {            //rise, press button
+void timer_begin()              //rise, press button
+{
 
-    timer.start();    
-    
+    timer.start();
+
 }
 
 void timer_end()             //fall, release button
@@ -314,10 +313,6 @@ void timer_end()             //fall, release button
 
 void Leds_OFF()
 {
-int j;
-
-    for(j=0;j<3;j++){
-         Leds[j]=0;
-    }
+    myBLUEled=0;
+    myYELLOWled=0;
 }
-
